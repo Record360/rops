@@ -1,0 +1,225 @@
+#!/usr/bin/env ruby
+$: << __dir__+'/../lib'
+
+require 'bundler/setup'
+require 'dry/cli'
+require 'active_support'
+require 'active_support/core_ext'
+require 'active_support/concern'
+require 'hashdiff'
+
+require 'core_ext'
+require 'deploy'
+
+module Record360
+  module Operations
+    extend Dry::CLI::Registry
+
+    module Common
+      extend ActiveSupport::Concern
+      included do
+        attr_reader :deploy, :root, :application, :default_commit, :registry, :default_context, :production_context
+      end
+
+      def initialize(deploy: nil, root: nil, application: nil, default_commit: 'master', registry: 'r360', default_context: 'staging', production_context: 'production')
+        @root = root || Dir.pwd
+        @application = application || File.basename(@root)
+
+        @default_commit = default_commit
+        @registry = registry
+        @default_context = default_context
+        @production_context = production_context
+        @deploy = deploy || Deploy.new(git_repo: @root, app: @application, registry: @registry)
+        super()
+      end
+
+    protected
+
+      def print_statuses(context, spec_statuses = nil)
+        spec_statuses ||= deploy.specs_running(context)
+        return  if spec_statuses.blank?
+
+        puts "Currently running (#{context}):"
+        spec_statuses.each do |spec, status|
+          msg = "  * #{status[:version]} #{spec.dig('metadata', 'name')}"
+          if (replicas = status.dig(:status, :replicas))
+            msg += " [#{status[:status][:availableReplicas] || 0}/#{replicas}]"
+          end
+          msg += " (#{spec['kind'].downcase})"
+          puts msg
+        end
+      end
+
+      def print_spec_diffs(diffs)
+        puts "Configuration changes:"
+        diffs.each do |spec, diff|
+          puts "  #{spec.dig('metadata', 'name')} (#{spec['kind'].downcase})"
+          diff.each do |op, key, old_val, new_val|
+            msg = String.new("    ")
+            if op.in? %w(- +)
+              msg += "#{op} #{key}: #{old_val.to_json}"
+            else
+              msg += "  #{key}: #{old_val.to_json} -> #{new_val.to_json}"
+            end
+            puts msg
+          end
+        end
+      end
+
+      def spec_diffs(spec_statuses)
+        spec_statuses.map do |new_spec, status|
+          # remove runtime info from old spec
+          old_spec = status[:spec].deep_dup
+          old_spec.deep_each do |key, val, obj|
+            if (key == 'metadata') && val.is_a?(Hash)
+              val.except! *%w(annotations creationTimestamp resourceVersion selfLink uid generation)
+              obj.delete(key)  if val.blank?
+            end
+          end
+          diff = filter_diff( Hashdiff.diff(old_spec, new_spec, use_lcs: false) ).presence
+          [ new_spec, diff ]
+        end.to_h.compact
+      end
+
+      FILTER_DIFF = {
+        'spec.suspend' => false,
+        'spec.progressDeadlineSeconds' => 600,
+        /spec\.template\.spec\.dnsPolicy$/ => 'ClusterFirst',
+        /spec\.template\.spec\.schedulerName$/ => 'default-scheduler',
+        /spec\.template\.spec\.securityContext$/ => {},
+        /spec\.template\.spec\.terminationGracePeriodSeconds$/ => 30,
+        /spec\.template\.spec\.restartPolicy$/ => 'Always',
+        /spec\.template\.spec\.containers\[\d+\]\.imagePullPolicy$/ => 'IfNotPresent',
+        /spec\.template\.spec\.containers\[\d+\]\.terminationMessagePath$/ => '/dev/termination-log',
+        /spec\.template\.spec\.containers\[\d+\]\.terminationMessagePolicy$/ => 'File',
+        /spec\.template\.spec\.containers\[\d+\]\.readinessProbe\.httpGet\.scheme$/ => 'HTTP',
+        /spec\.template\.spec\.containers\[\d+\]\.readinessProbe\.timeoutSeconds$/ => 1,
+        /spec\.template\.spec\.containers\[\d+\]\.readinessProbe\.successThreshold$/ => 1,
+        /spec\.template\.spec\.containers\[\d+\]\.readinessProbe\.failureThreshold$/ => 3,
+        /spec\.template\.spec\.containers\[\d+\]\.env\[\d+\]\.valueFrom\.fieldRef\.apiVersion$/ => 'v1',
+        /spec\.template\.spec\.containers\[\d+\]\.ports\[\d+\]\.protocol$/ => 'TCP',
+        /spec\.template\.spec\.volumes\[\d+\]\.secret\.defaultMode/ => 420,
+      }.freeze
+
+      def filter_diff(diff)
+        diff.reject do |op, path, old_val, new_val|
+          case op
+            when '-'
+              FILTER_DIFF.any? do |key, default|
+                ((key.is_a?(String) && (key == path)) || (key.is_a?(Regexp) && key.match(path))) && (default == old_val)
+              end
+
+            when '~'
+              if path.match(/spec\.template\.spec\.containers\[\d+\]\.image$/)
+                true
+
+              elsif path.match(/spec\.template\.spec\.containers\[\d+\]\.resources\.requests\.cpu$/)
+                # normalize miliCPUs to fractional CPUs, filter if equal
+                old_val.end_with?('m') && ((old_val.delete_suffix('m').to_f / 1000.0) == new_val)
+
+              elsif path.match(/spec\.template\.spec\.containers\[\d+\]\.resources\.requests\.memory$/)
+                # normalize Mi to fractional Gi, filter if equal
+                old_val.end_with?('Mi') && ("#{(old_val.delete_suffix('Mi').to_f / 1024.0)}Gi" == new_val)
+              end
+          end
+        end
+      end
+    end
+
+    class CurrentStatus < Dry::CLI::Command
+      include Common
+
+      desc "Display status of all running specs" #" (CONTEXT=#{default_context})"
+      argument :context, desc: "Kubernetes context" #, default: default_context
+
+      def call(context: nil, **)
+        context ||= default_context
+        print_statuses(context)
+      end
+    end
+
+    class BuildImage < Dry::CLI::Command
+      include Common
+
+      desc "Build the docker image" #" (COMMIT=#{DEFAULT_COMMIT})"
+      argument :commit, desc: "Commit to build" #, default: DEFAULT_COMMIT
+
+      def call(commit: nil, **)
+        deploy.commit = commit || default_commit
+        if deploy.local_image_exists?
+          puts "Local image #{deploy.local_image} already exists"
+          return
+        end
+
+        puts "Building image #{deploy.local_image} using #{Deploy.build_cores} cores ..."
+        unless `#{Deploy.docker} images -q #{deploy.local_image}`.present?
+          tags = [deploy.image_tag]
+          tags = tags.map { |t| "-t #{deploy.local_repo}:#{t}" }.join(' ')
+
+          Dir.mktmpdir("#{deploy.app}-build") do |dir|
+            system("git archive #{deploy.commit_id} | tar -x -C #{dir}") and
+            system("#{Deploy.docker} build --build-arg JOBS=#{Deploy.build_cores} --build-arg GIT_VERSION=#{deploy.commit_id} #{tags} #{dir}")
+          end or exit(-1)
+        end
+      end
+    end
+
+    class PushImage < Dry::CLI::Command
+      include Common
+
+      desc "Build and push the docker image to the repository" #" (COMMIT=#{DEFAULT_COMMIT})"
+      argument :commit, desc: "Commit to build" #, default: DEFAULT_COMMIT
+
+      def call(commit: nil, **)
+        deploy.commit = commit || default_commit
+        if deploy.remote_image_exists?
+          puts "Remote image #{deploy.remote_image} already exists"
+          return
+        end
+
+        BuildImage.new(deploy: deploy).call(commit: commit)
+        deploy.push! or exit(-1)
+      end
+    end
+
+    class DeployImage < Dry::CLI::Command
+      include Common
+
+      desc "Deploy the docker image to the cluster" #" (COMMIT=#{default_commit}, CONTEXT=#{default_context})"
+      argument :commit,  desc: "Commit to build" #,    default: default_commit
+      argument :context, desc: "Kubernetes context" #, default: default_context
+
+      def call(commit: nil, context: nil, **)
+        context ||= default_context
+        if (context == 'production') && commit.blank?
+          puts "Must specify commit for production deployment"
+          exit -1
+        end
+        deploy.commit = commit.presence || default_commit
+
+        if (spec_statuses = deploy.specs_running(context))
+          print_statuses(context, spec_statuses)
+          puts
+        else
+          exit -1
+        end
+
+        if (diffs = spec_diffs(spec_statuses)).present?
+          print_spec_diffs(diffs)
+          puts
+        end
+
+        print "Deploy #{deploy.image_tag} (#{deploy.commit}) to #{context}? (y/N): "
+        exit -1  unless $stdin.gets.chomp == 'y'
+        deploy.deploy!(context)
+      end
+    end
+
+    register 'status', CurrentStatus
+    register 'build',  BuildImage
+    register 'push',   PushImage
+    register 'deploy', DeployImage
+  end
+end
+
+Dry::CLI.new(Record360::Operations).call
