@@ -18,19 +18,36 @@ module Record360
     module Common
       extend ActiveSupport::Concern
       included do
-        attr_reader :deploy, :root, :application, :default_commit, :registry, :default_context, :production_context
+        attr_reader :default_commit, :registry, :default_context, :production_context
+
+        option :root, desc: "Root directory", default: Dir.pwd
       end
 
       def initialize(deploy: nil, root: nil, application: nil, default_commit: 'master', registry: 'r360', default_context: 'staging', production_context: 'production')
-        @root = root || Dir.pwd
-        @application = application || File.basename(@root)
-
+        @deploy = deploy
+        @root = root
+        @application = application
         @default_commit = default_commit
         @registry = registry
         @default_context = default_context
         @production_context = production_context
-        @deploy = deploy || Deploy.new(git_repo: @root, app: @application, registry: @registry)
         super()
+      end
+
+      def root
+        @root ||= Dir.pwd
+      end
+
+      def application
+        @application ||= File.basename(@root)
+      end
+
+      def deploy
+        @deploy ||= Deploy.new(git_repo: root, app: application, registry: @registry)
+      end
+
+      def call(root: nil, **)
+        @root = root  if root
       end
 
     protected
@@ -72,7 +89,7 @@ module Record360
           old_spec = status[:spec].deep_dup
           old_spec.deep_each do |key, val, obj|
             if (key == 'metadata') && val.is_a?(Hash)
-              val.except! *%w(annotations creationTimestamp resourceVersion selfLink uid generation)
+              val.except! *%w(annotations creationTimestamp resourceVersion selfLink uid generation managedFields)
               obj.delete(key)  if val.blank?
             end
           end
@@ -127,24 +144,24 @@ module Record360
     end
 
     class CurrentStatus < Dry::CLI::Command
-      include Common
-
       desc "Display status of all running specs" #" (CONTEXT=#{default_context})"
       argument :context, desc: "Kubernetes context" #, default: default_context
+      include Common
 
       def call(context: nil, **)
+        super
         context ||= default_context
         print_statuses(context)
       end
     end
 
     class BuildImage < Dry::CLI::Command
-      include Common
-
       desc "Build the docker image" #" (COMMIT=#{DEFAULT_COMMIT})"
       argument :commit, desc: "Commit to build" #, default: DEFAULT_COMMIT
+      include Common
 
       def call(commit: nil, **)
+        super
         deploy.commit = commit || default_commit
         if deploy.local_image_exists?
           puts "Local image #{deploy.local_image} already exists"
@@ -165,12 +182,12 @@ module Record360
     end
 
     class PushImage < Dry::CLI::Command
-      include Common
-
       desc "Build and push the docker image to the repository" #" (COMMIT=#{DEFAULT_COMMIT})"
       argument :commit, desc: "Commit to build" #, default: DEFAULT_COMMIT
+      include Common
 
       def call(commit: nil, **)
+        super
         deploy.commit = commit || default_commit
         if deploy.remote_image_exists?
           puts "Remote image #{deploy.remote_image} already exists"
@@ -183,25 +200,34 @@ module Record360
     end
 
     class DeployImage < Dry::CLI::Command
-      include Common
-
       desc "Deploy the docker image to the cluster" #" (COMMIT=#{default_commit}, CONTEXT=#{default_context})"
       argument :commit,  desc: "Commit to build" #,    default: default_commit
       argument :context, desc: "Kubernetes context" #, default: default_context
+      include Common
 
       def call(commit: nil, context: nil, **)
+        super
         context ||= default_context
         if (context == 'production') && commit.blank?
           puts "Must specify commit for production deployment"
-          exit -1
+          exit(-1)
         end
         deploy.commit = commit.presence || default_commit
+
+        if context == 'production'
+          unless deploy.remote_image_exists?
+            puts "Remote image #{deploy.remote_image} doesn't exists.  Run `push` first"
+            exit(-1)
+          end
+        else
+          PushImage.new(deploy: deploy).call(commit: commit)
+        end
 
         if (spec_statuses = deploy.specs_running(context))
           print_statuses(context, spec_statuses)
           puts
         else
-          exit -1
+          exit(-1)
         end
 
         if (diffs = spec_diffs(spec_statuses)).present?
@@ -209,8 +235,13 @@ module Record360
           puts
         end
 
-        print "Deploy #{deploy.image_tag} (#{deploy.commit}) to #{context}? (y/N): "
-        exit -1  unless $stdin.gets.chomp == 'y'
+        if $stdout.tty?
+          print "Deploy #{deploy.image_tag} (#{deploy.commit}) to #{context}? (y/N): "
+          exit(-1)  unless $stdin.gets&.chomp == 'y'
+        else
+          puts "Deploying #{deploy.image_tag} (#{deploy.commit}) to #{context}"
+        end
+
         deploy.deploy!(context)
       end
     end
