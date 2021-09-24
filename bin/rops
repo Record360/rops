@@ -9,7 +9,7 @@ require 'active_support/concern'
 require 'hashdiff'
 
 require 'core_ext'
-require 'deploy'
+require 'deployer'
 
 module Record360
   module Operations
@@ -18,42 +18,27 @@ module Record360
     module Common
       extend ActiveSupport::Concern
       included do
-        attr_reader :default_commit, :registry, :default_context, :production_context
+        attr_reader :deployer, :context
 
         option :root, desc: "Root directory", default: Dir.pwd
       end
 
-      def initialize(deploy: nil, root: nil, application: nil, default_commit: 'master', registry: 'r360', default_context: 'staging', production_context: 'production')
-        @deploy = deploy
-        @root = root
-        @application = application
-        @default_commit = default_commit
-        @registry = registry
-        @default_context = default_context
-        @production_context = production_context
+      def initialize(deployer = nil)
+        @deployer = deployer
         super()
       end
 
-      def root
-        @root ||= Dir.pwd
-      end
-
-      def application
-        @application ||= File.basename(@root)
-      end
-
-      def deploy
-        @deploy ||= Deploy.new(git_repo: root, app: application, registry: @registry)
-      end
-
-      def call(root: nil, **)
+      def call(root: nil, branch: nil, context: nil, **)
         @root = root  if root
+        @deployer ||= Deployer.new(@root)
+        deployer.branch = branch  if branch
+        @context = context || deployer.default_context
       end
 
     protected
 
       def print_statuses(context, spec_statuses = nil)
-        spec_statuses ||= deploy.specs_running(context)
+        spec_statuses ||= deployer.specs_running(context)
         return  if spec_statuses.blank?
 
         puts "Currently running (#{context}):"
@@ -144,91 +129,82 @@ module Record360
     end
 
     class CurrentStatus < Dry::CLI::Command
-      desc "Display status of all running specs" #" (CONTEXT=#{default_context})"
-      argument :context, desc: "Kubernetes context" #, default: default_context
+      desc "Display status of all running specs"
+      argument :context, desc: "Kubernetes context"
       include Common
 
-      def call(context: nil, **)
+      def call(**)
         super
-        context ||= default_context
         print_statuses(context)
       end
     end
 
     class BuildImage < Dry::CLI::Command
       desc "Build the docker image" #" (COMMIT=#{DEFAULT_COMMIT})"
-      argument :commit, desc: "Commit to build" #, default: DEFAULT_COMMIT
+      argument :branch, desc: "Branch (or commit) to build" #, default: DEFAULT_COMMIT
       include Common
 
-      def call(commit: nil, **)
+      def call(**)
         super
-        deploy.commit = commit || default_commit
-        if deploy.local_image_exists?
-          puts "Local image #{deploy.local_image} already exists"
-          return
-        end
-
-        puts "Building image #{deploy.local_image} using #{Deploy.build_cores} cores ..."
-        unless `#{Deploy.docker} images -q #{deploy.local_image}`.present?
-          tags = [deploy.image_tag]
-          tags = tags.map { |t| "-t #{deploy.local_repo}:#{t}" }.join(' ')
-
-          Dir.mktmpdir("#{deploy.app}-build") do |dir|
-            system("git archive #{deploy.commit_id} | tar -x -C #{dir}") and
-            system("#{Deploy.docker} build --build-arg JOBS=#{Deploy.build_cores} --build-arg GIT_VERSION=#{deploy.commit_id} #{tags} #{dir}")
-          end or exit(-1)
+        deployer.images.each do |image|
+          if image.local_exists?
+            puts "Local image #{image.local_image} already exists"
+          else
+            puts "Building image #{image.local_image} using #{Image.build_cores} cores ..."
+            image.build! or exit(-1)
+          end
         end
       end
     end
 
     class PushImage < Dry::CLI::Command
-      desc "Build and push the docker image to the repository" #" (COMMIT=#{DEFAULT_COMMIT})"
-      argument :commit, desc: "Commit to build" #, default: DEFAULT_COMMIT
+      desc "Build and push the docker image to the repository"
+      argument :branch, desc: "Branch (or commit) to build"
       include Common
 
-      def call(commit: nil, **)
+      def call(**)
         super
-        deploy.commit = commit || default_commit
-        if deploy.remote_image_exists?
-          puts "Remote image #{deploy.remote_image} already exists"
-          return
-        end
+        deployer.images.each do |image|
+          if image.remote_exists?
+            puts "Remote image #{image.remote_image} already exists"
+            next
+          end
 
-        BuildImage.new(deploy: deploy).call(commit: commit)
-        deploy.push! or exit(-1)
+          unless image.local_exists?
+            puts "Building image #{image.local_image} using #{Image.build_cores} cores ..."
+            image.build! or exit(-1)
+          end
+          image.push! or exit(-1)
+        end
       end
     end
 
     class DeployImage < Dry::CLI::Command
-      desc "Deploy the docker image to the cluster" #" (COMMIT=#{default_commit}, CONTEXT=#{default_context})"
-      argument :commit,  desc: "Commit to build" #,    default: default_commit
-      argument :context, desc: "Kubernetes context" #, default: default_context
+      desc "Deploy the docker image to the cluster"
+      argument :branch,  desc: "Branch (or commit) to build"
+      argument :context, desc: "Kubernetes context"
       include Common
 
-      def call(commit: nil, context: nil, **)
+      def call(**)
         super
-        context ||= default_context
-        if (context == 'production') && commit.blank?
-          puts "Must specify commit for production deployment"
-          exit(-1)
-        end
-        deploy.commit = commit.presence || default_commit
-
-        if context == 'production'
-          unless deploy.remote_image_exists?
-            puts "Remote image #{deploy.remote_image} doesn't exists.  Run `push` first"
+        if context == deployer.production_context
+          if branch.blank?
+            puts "Must specify commit for production deployment"
             exit(-1)
           end
+          deployer.images.each do |image|
+            unless image.remote_exists?
+              puts "Remote image #{image.remote_image} doesn't exists.  Run `push` first"
+              exit(-1)
+            end
+          end
         else
-          PushImage.new(deploy: deploy).call(commit: commit)
+          PushImage.new(deployer).call(context: context)
         end
 
-        if (spec_statuses = deploy.specs_running(context))
-          print_statuses(context, spec_statuses)
-          puts
-        else
-          exit(-1)
-        end
+        spec_statuses = deployer.specs_running(context)  or exit(-1)
+        print_statuses(context, spec_statuses)
+        puts
 
         if (diffs = spec_diffs(spec_statuses)).present?
           print_spec_diffs(diffs)
@@ -236,13 +212,13 @@ module Record360
         end
 
         if $stdout.tty?
-          print "Deploy #{deploy.image_tag} (#{deploy.commit}) to #{context}? (y/N): "
+          print "Deploy #{deployer.branch} (#{deployer.image_tag}) to #{context}? (y/N): "
           exit(-1)  unless $stdin.gets&.chomp == 'y'
         else
-          puts "Deploying #{deploy.image_tag} (#{deploy.commit}) to #{context}"
+          puts "Deploying #{deployer.branch} (#{deployer.image_tag}) to #{context}"
         end
 
-        deploy.deploy!(context)
+        deployer.deploy!(context)
       end
     end
 
