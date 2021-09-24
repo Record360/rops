@@ -67,18 +67,29 @@ class Deployer
       cmd += " #{spec['kind'].downcase}/#{spec.dig('metadata', 'name')}"
     end
 
-    statuses, cmd_status = Open3.capture2(cmd)
-    return nil  unless cmd_status.success?
+    statuses, stderr, cmd_status = Open3.capture3(cmd)
+    unless cmd_status.success? || stderr.match(/not found/)
+      puts stderr  if stderr.present?
+      return nil
+    end
 
+    spec_status = specs.map { |spec|  [ spec, nil ] }.to_h
     statuses = JSON.parse(statuses)
     statuses = statuses['items']  if statuses.key?('items')
-    Array.wrap(statuses).map.with_index do |item, idx|
+    Array.wrap(statuses).each do |item|
       containers = Array(item.dig('spec', 'template', 'spec', 'containers')) +
                    Array(item.dig('spec', 'jobTemplate', 'spec', 'template', 'spec', 'containers'))
       version = containers.first['image'].split(':').last               # FIXME: support multiple containers
       status = item.delete('status').with_indifferent_access
-      [ specs[idx], { spec: item, version: version, status: status }]
-    end.to_h
+
+      spec = specs.detect do |s|
+        (s['kind'] == item['kind']) &&
+        (s.dig('metadata', 'namespace') == item.dig('metadata', 'namespace')) &&
+        (s.dig('metadata', 'name') == item.dig('metadata', 'name'))
+      end
+      spec_status[spec] = { spec: item, version: version, status: status }
+    end
+    spec_status
   end
 
   def deploy!(context)

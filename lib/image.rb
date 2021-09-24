@@ -64,7 +64,7 @@ class Image
   def remote_exists?
     if @remote_exists.nil?
       # this fails to parse the manifest of some images (built with Podman?), and gives warnings on others
-      stdout, stderr, status = Open3.capture3("DOCKER_CLI_EXPERIMENTAL=enabled #{Deployer.docker} manifest inspect #{remote_image}")
+      _stdout, stderr, status = Open3.capture3("DOCKER_CLI_EXPERIMENTAL=enabled #{Deployer.docker} manifest inspect #{remote_image}")
       if status.success? || stderr.match(/error parsing manifest blob/)
         @remote_exists = true
       else

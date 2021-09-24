@@ -43,11 +43,13 @@ module Record360
 
         puts "Currently running (#{context}):"
         spec_statuses.each do |spec, status|
-          msg = "  * #{status[:version]} #{spec.dig('metadata', 'name')}"
-          if (replicas = status.dig(:status, :replicas))
-            msg += " [#{status[:status][:availableReplicas] || 0}/#{replicas}]"
+          msg = String.new("  * ")
+          msg << (status&.dig(:version) || "MISSING  ")
+          msg << " #{spec.dig('metadata', 'name')}"
+          if (replicas = status&.dig(:status, :replicas))
+            msg << " [#{status[:status][:availableReplicas] || 0}/#{replicas}]"
           end
-          msg += " (#{spec['kind'].downcase})"
+          msg << " (#{spec['kind'].downcase})"
           puts msg
         end
       end
