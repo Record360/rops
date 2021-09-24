@@ -62,8 +62,10 @@ module Record360
             msg = String.new("    ")
             if op.in? %w(- +)
               msg += "#{op} #{key}: #{old_val.to_json}"
-            else
+            elsif op
               msg += "  #{key}: #{old_val.to_json} -> #{new_val.to_json}"
+            else
+              msg += "  #{spec.to_json}"
             end
             puts msg
           end
@@ -72,15 +74,19 @@ module Record360
 
       def spec_diffs(spec_statuses)
         spec_statuses.map do |new_spec, status|
-          # remove runtime info from old spec
-          old_spec = status[:spec].deep_dup
-          old_spec.deep_each do |key, val, obj|
-            if (key == 'metadata') && val.is_a?(Hash)
-              val.except! *%w(annotations creationTimestamp resourceVersion selfLink uid generation managedFields)
-              obj.delete(key)  if val.blank?
+          if status
+            # remove runtime info from old spec
+            old_spec = status[:spec].deep_dup
+            old_spec.deep_each do |key, val, obj|
+              if (key == 'metadata') && val.is_a?(Hash)
+                val.except! *%w(annotations creationTimestamp resourceVersion selfLink uid generation managedFields)
+                obj.delete(key)  if val.blank?
+              end
             end
+            diff = filter_diff( Hashdiff.diff(old_spec, new_spec, use_lcs: false) ).presence
+          else
+            diff = [ [] ]
           end
-          diff = filter_diff( Hashdiff.diff(old_spec, new_spec, use_lcs: false) ).presence
           [ new_spec, diff ]
         end.to_h.compact
       end
