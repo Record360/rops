@@ -9,7 +9,7 @@ class Deployer
   CONFIG_DEFAULTS = {
     'repository' => nil,
     'default_branch' => 'master',
-    'registry' => 'r360',
+    'registry' => 'docker.io/r360',
     'default_context' => 'staging',
     'production_context' => 'production',
     'images' => []
@@ -58,7 +58,7 @@ class Deployer
     context = context.to_s
     specs = deploy_specs(context)
 
-    cmd = String.new "kubectl --context #{context} --output=json"
+    cmd = String.new "--output=json"
     if (namespace = specs.first.dig('metadata', 'namespace'))
       cmd += " --namespace #{namespace}"
     end
@@ -67,8 +67,8 @@ class Deployer
       cmd += " #{spec['kind'].downcase}/#{spec.dig('metadata', 'name')}"
     end
 
-    statuses, stderr, cmd_status = Open3.capture3(cmd)
-    unless cmd_status.success? || stderr.match(/not found/)
+    statuses, stderr, success = kubectl(context, cmd)
+    unless success || stderr.match(/not found/)
       puts stderr  if stderr.present?
       return nil
     end
@@ -83,9 +83,9 @@ class Deployer
       status = item.delete('status').with_indifferent_access
 
       spec = specs.detect do |s|
-        (s['kind'] == item['kind']) &&
-        (s.dig('metadata', 'namespace') == item.dig('metadata', 'namespace')) &&
-        (s.dig('metadata', 'name') == item.dig('metadata', 'name'))
+        (item['kind'] == s['kind']) &&
+        (item.dig('metadata', 'name') == s.dig('metadata', 'name')) &&
+        (item.dig('metadata', 'namespace') == (s.dig('metadata', 'namespace') || 'default'))
       end
       spec_status[spec] = { spec: item, version: version, status: status }
     end
@@ -95,8 +95,10 @@ class Deployer
   def deploy!(context)
     context ||= default_context
     context = context.to_s
-    specs = deploy_specs(context)
-    kubectl_apply(context, *specs)
+    specs = deploy_specs(context).presence  or raise "No kubernetes specs to deploy"
+    stdout, stderr, _success = kubectl(context, 'apply -f -', YAML.dump_stream(*specs))
+    puts stdout  if stdout.present?
+    puts stderr  if stderr.present?
   end
 
   def deploy_specs(context = nil)
@@ -129,29 +131,31 @@ class Deployer
     end
   end
 
-  def kubectl_apply(context, *specs)
-    raise "No kubernetes specs to deploy"  if specs.blank?
+  def kubectl(context, cmd, data = nil)
+    cmd = "kubectl --context #{context} #{cmd}"
 
-    cmd = "kubectl --context #{context} apply -f -"
-    data = YAML.dump_stream(*specs)
-    if !ssh_host
-      Open3.popen2e(cmd) do |stdin, stdout, wait_thread|
-        Thread.new { stdout.each { |in_data|  puts in_data } }
-        stdin.write data
-        stdin.close
-        wait_thread.value
-      end
+    if ssh_host.blank?
+      stdout, stderr, cmd_status = Open3.capture3(cmd)
+      [ stdout, stderr, cmd_status.success? ]
     else
       require 'net/ssh'
+      exit_code = -1
+      stdout = String.new
+      stderr = String.new
+
       ssh = Net::SSH.start(ssh_host)
-      ssh.open_channel do |chan|
-        chan.exec(cmd) do |_, _res|
-          chan.on_data { |_, in_data|  puts in_data }
-          chan.send_data data
-          chan.eof!
+      ssh.open_channel do |channel|
+        channel.exec(cmd) do |_ch, success|
+          success or raise "FAILED: couldn't execute command on #{ssh_host}: #{cmd.inspect}"
+          channel.on_data { |_ch, in_data|  stdout << in_data }
+          channel.on_extended_data { |_ch, _type, in_data|  stderr << in_data }
+          channel.on_request('exit-status') { |_ch, in_data|  exit_code = in_data.read_long }
+          channel.send_data(data)  if data
+          channel.eof!
         end
       end
       ssh.loop
+      [ stdout, stderr, exit_code.zero? ]
     end
   end
 

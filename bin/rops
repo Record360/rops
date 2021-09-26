@@ -19,6 +19,7 @@ module Record360
       extend ActiveSupport::Concern
       included do
         attr_reader :deployer, :context
+        delegate [:branch, :image_tag, :images, :production_context] => :deployer
 
         option :root, desc: "Root directory", default: Dir.pwd
       end
@@ -92,6 +93,7 @@ module Record360
       end
 
       FILTER_DIFF = {
+        'metadata.namespace' => 'default',
         'spec.suspend' => false,
         'spec.progressDeadlineSeconds' => 600,
         /spec\.template\.spec\.dnsPolicy$/ => 'ClusterFirst',
@@ -106,6 +108,7 @@ module Record360
         /spec\.template\.spec\.containers\[\d+\]\.readinessProbe\.timeoutSeconds$/ => 1,
         /spec\.template\.spec\.containers\[\d+\]\.readinessProbe\.successThreshold$/ => 1,
         /spec\.template\.spec\.containers\[\d+\]\.readinessProbe\.failureThreshold$/ => 3,
+        /spec\.template\.spec\.containers\[\d+\]\.resources$/ => {},
         /spec\.template\.spec\.containers\[\d+\]\.env\[\d+\]\.valueFrom\.fieldRef\.apiVersion$/ => 'v1',
         /spec\.template\.spec\.containers\[\d+\]\.ports\[\d+\]\.protocol$/ => 'TCP',
         /spec\.template\.spec\.volumes\[\d+\]\.secret\.defaultMode/ => 420,
@@ -154,7 +157,7 @@ module Record360
 
       def call(**)
         super
-        deployer.images.each do |image|
+        images.each do |image|
           if image.local_exists?
             puts "Local image #{image.local_image} already exists"
           else
@@ -172,7 +175,7 @@ module Record360
 
       def call(**)
         super
-        deployer.images.each do |image|
+        images.each do |image|
           if image.remote_exists?
             puts "Remote image #{image.remote_image} already exists"
             next
@@ -195,12 +198,12 @@ module Record360
 
       def call(**)
         super
-        if context == deployer.production_context
+        if context == production_context
           if branch.blank?
             puts "Must specify commit for production deployment"
             exit(-1)
           end
-          deployer.images.each do |image|
+          images.each do |image|
             unless image.remote_exists?
               puts "Remote image #{image.remote_image} doesn't exists.  Run `push` first"
               exit(-1)
@@ -220,10 +223,10 @@ module Record360
         end
 
         if $stdout.tty?
-          print "Deploy #{deployer.branch} (#{deployer.image_tag}) to #{context}? (y/N): "
+          print "Deploy #{branch} (#{image_tag}) to #{context}? (y/N): "
           exit(-1)  unless $stdin.gets&.chomp == 'y'
         else
-          puts "Deploying #{deployer.branch} (#{deployer.image_tag}) to #{context}"
+          puts "Deploying #{branch} (#{image_tag}) to #{context}"
         end
 
         deployer.deploy!(context)
