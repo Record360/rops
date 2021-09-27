@@ -49,7 +49,7 @@ images:
   The Git branch to build, by default `master`.  Overridden with the `default_branch` field in the configuration file.
 
 #### Docker Registry
-  The Docker registry to push container images.  By default, `docker.io/r360`, which is probably not what you want and should be overridden by setting the `registry` field in the configuration file.
+  The Docker registry to push container images.  By default, `r360`, which is probably not what you want and should be overridden by setting the `registry` field in the configuration file.
 
 #### Kubernetes Context
   The name of the Kubernetes context to deploy to (as listed in `~/.kube/config`).  Defaults to `staging` and overridden with the `default_context` field in the configuration file.

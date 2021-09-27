@@ -24,3 +24,5 @@
 /sandbox
 .DS_Store/
 .idea/
+
+rops-*.gem

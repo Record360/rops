@@ -9,7 +9,7 @@ class Deployer
   CONFIG_DEFAULTS = {
     'repository' => nil,
     'default_branch' => 'master',
-    'registry' => 'docker.io/r360',
+    'registry' => 'r360',
     'default_context' => 'staging',
     'production_context' => 'production',
     'images' => []
