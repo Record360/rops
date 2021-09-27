@@ -68,7 +68,7 @@ class Image
       if status.success? || stderr.include?('error parsing manifest blob')
         @remote_exists = true
       else
-        puts stderr  if stderr.present? && !stderr.include?('manifest unknown')
+        puts stderr  if stderr.present? && !stderr.include?('manifest unknown') && !stderr.include?('no such manifest')
         @remote_exists = false
       end
     end

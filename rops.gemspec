@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name        = 'rops'
-  s.version     = '1.0.4'
+  s.version     = '1.0.5'
   s.summary     = "Record360 Operations tool"
   s.description = "A tool to checkout, build, and deploy projects using Git, Docker, and Kubernetes"
   s.authors     = ["Steve Sloan"]
