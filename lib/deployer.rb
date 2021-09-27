@@ -135,7 +135,7 @@ class Deployer
     cmd = "kubectl --context #{context} #{cmd}"
 
     if ssh_host.blank?
-      stdout, stderr, cmd_status = Open3.capture3(cmd)
+      stdout, stderr, cmd_status = Open3.capture3(cmd, stdin_data: data)
       [ stdout, stderr, cmd_status.success? ]
     else
       require 'net/ssh'
