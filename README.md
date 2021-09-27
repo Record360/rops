@@ -2,26 +2,23 @@
 
 The Record360 Operations tool - checkout, build, deploy
 
-## Usage
+## Description
 
 This tool implements the Record360 Best Practices for building and deploying projects.  It interfaces with Git (for source control), Docker/Podman (for container images), and Kubernetes (cluster deployments).
 
-### Installation
+## Installation
 
-Add `rops` to your Gemfile and then run `bundle install`.
+Download and install with:
 
-```ruby
-# Gemfile
-group :development do
-  gem 'rops', github: 'Record360/rops'
-end
+```shell
+gem install rops
 ```
 
-### Configuration
+## Configuration
 
 `rops` has several opinionated defaults, which can be overridden by command line options or a configuration file.
 
-#### Project Root Directory
+### Project Root Directory
   By default, the current working directory when `rops` runs.  It can be overridden with the `--root=<DIR>` option.
 
   The project root directory must contain:
@@ -34,7 +31,7 @@ end
   * `./platform/rops.yaml`
   * `./config/rops.yaml`
 
-#### Docker Container Images
+### Docker Container Images
   By default, a single image named from the the Project root directory and built from `./Dockerfile`.  May be overridden by setting the `images` array in the configuration file, e.g.:
 
 ```yaml
@@ -45,23 +42,22 @@ images:
   dockerfile: dockerfiles/second.Dockerfile
 ```
 
-#### Git Default Branch
+### Git Default Branch
   The Git branch to build, by default `master`.  Overridden with the `default_branch` field in the configuration file.
 
-#### Docker Registry
+### Docker Registry
   The Docker registry to push container images.  By default, `r360`, which is probably not what you want and should be overridden by setting the `registry` field in the configuration file.
 
-#### Kubernetes Context
+### Kubernetes Context
   The name of the Kubernetes context to deploy to (as listed in `~/.kube/config`).  Defaults to `staging` and overridden with the `default_context` field in the configuration file.
 
   There are extra safety features when deploying to the production context, which defaults to `production` and may be overridden with the `production_context` field in the configuration file.
 
   Kubernetes configuration is organized by Kubernetes context name, under the `./platform` directory.  For example, the Kubernetes configuration for the default contexts (`staging` and `production`) is stored under `./platform/staging` and `./platform/production` respectively.
 
-### Operations
+## Operations
 
 ### Status
-
 Arguments: 
 * `context`: Kubernetes context (default `staging`, or the value of `staging_context`)
 
@@ -80,7 +76,6 @@ Currently running (staging):
 ```
 
 ### Build
-
 Arguments: 
 * `branch`: Git branch/commit (default `master`, or the value of `default_branch`)
 
@@ -105,7 +100,6 @@ Successfully tagged localhost/web:gfc50028b-feature
 ```
 
 ### Push
-
 Arguments: 
 * `branch`: Git branch/commit (default `master`, or the value of `default_branch`)
 
@@ -120,7 +114,6 @@ Storing signatures
 ```
 
 ### Deploy
-
 Arguments: 
 * `branch`: Git branch/commit (default `master`, or the value of `default_branch`)
 * `context`: Kubernetes context (default `staging`, or the value of `default_context`)
