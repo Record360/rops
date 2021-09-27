@@ -1,8 +1,8 @@
 Gem::Specification.new do |s|
   s.name        = 'rops'
-  s.version     = '0.1.0'
+  s.version     = '1.0.1'
   s.summary     = "Record360 Operations tool"
-  s.description = "A tool for building and deploying Docker images to Kubernetes"
+  s.description = "A tool to checkout, build, and deploy projects using Git, Docker, and Kubernetes"
   s.authors     = ["Steve Sloan"]
   s.email       = 'steve@record360.com'
   s.files       =  Dir['lib/**/*.rb'] + Dir['bin/*'] + Dir['[A-Z]*']
