@@ -68,7 +68,7 @@ class Deployer
     end
 
     statuses, stderr, success = kubectl(context, cmd)
-    unless success || stderr.match(/not found/)
+    unless (success || stderr.match(/not found/)) && statuses.present?
       puts stderr  if stderr.present?
       return nil
     end

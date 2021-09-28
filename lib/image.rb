@@ -54,7 +54,9 @@ class Image
   end
 
   def local_exists?
-    system("#{Deployer.docker} image exists #{local_image}")
+    if @local_exists.nil?
+      @local_exists = system("#{Deployer.docker} image exists #{local_image}")
+    end
   end
 
   def remote_image
