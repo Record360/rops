@@ -150,8 +150,8 @@ module Record360
     end
 
     class BuildImage < Dry::CLI::Command
-      desc "Build the docker image" #" (COMMIT=#{DEFAULT_COMMIT})"
-      argument :branch, desc: "Branch (or commit) to build" #, default: DEFAULT_COMMIT
+      desc "Build the docker image"
+      argument :branch, desc: "Branch (or commit) to build"
       include Common
 
       def call(**)
@@ -222,10 +222,10 @@ module Record360
         end
 
         if $stdout.tty?
-          print "Deploy #{branch} (#{image_tag}) to #{context}? (y/N): "
+          print "Deploy #{deployer.branch} (#{image_tag}) to #{context}? (y/N): "
           exit(-1)  unless $stdin.gets&.chomp == 'y'
         else
-          puts "Deploying #{branch} (#{image_tag}) to #{context}"
+          puts "Deploying #{deployer.branch} (#{image_tag}) to #{context}"
         end
 
         deployer.deploy!(context)

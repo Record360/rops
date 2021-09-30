@@ -44,8 +44,8 @@ class Deployer
 
     short_id = @commit[0, 8]
     @image_tag = "g#{short_id}"
-    if branch.present? && (branch != default_branch) && !branch.start_with?(short_id)
-      @image_tag += "-#{branch}"
+    if (@branch != default_branch) && !@branch.start_with?(short_id)
+      @image_tag += "-#{@branch}"
     end
     images.each do |image|
       image.commit = commit

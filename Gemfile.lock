@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    rops (1.0.6)
+    rops (1.0.7)
       activesupport (~> 6.1.4)
       dry-cli (~> 0.7.0)
       git (~> 1.9.1)
