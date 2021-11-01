@@ -1,16 +1,13 @@
-class Image
+class Image < Buildable
   def self.build_cores
     @build_cores ||= ENV.fetch('R360_BUILD_CORES', [ 1, Concurrent::Utility::ProcessorCounter.new.processor_count - 1 ].max).to_i
   end
 
-  attr_reader :name, :repository, :dockerfile, :commit, :tag, :registry
-  attr_writer :commit
+  attr_reader :dockerfile, :tag, :registry
 
-  def initialize(name:, repository:, dockerfile:, commit:, tag:, registry:)
-    @name = name.downcase
-    @repository = repository
+  def initialize(name:, repository:, commit:, dockerfile:, tag:, registry:)
+    super(name: name, repository: repository, commit: commit)
     @dockerfile = dockerfile
-    @commit = commit
     @tag = tag
     @registry = registry
   end
@@ -22,9 +19,7 @@ class Image
 
   def build!
     return  if local_exists?
-
-    Dir.mktmpdir("#{name}-build") do |dir|
-      system("git -C #{repository} archive #{commit} | tar -x -C #{dir}") and
+    checkout do |dir|
       system("#{Deployer.docker} build -f #{dockerfile} -t #{local_image} --build-arg JOBS=#{Image.build_cores} --build-arg GIT_VERSION=#{commit} #{dir}")
     end
   end
