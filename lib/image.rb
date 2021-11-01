@@ -1,3 +1,5 @@
+require 'buildable'
+
 class Image < Buildable
   def self.build_cores
     @build_cores ||= ENV.fetch('R360_BUILD_CORES', [ 1, Concurrent::Utility::ProcessorCounter.new.processor_count - 1 ].max).to_i

@@ -18,6 +18,7 @@ class Deployer
   attr_reader :root, :repository, :registry, :ssh_host, :images
   attr_reader :default_branch, :default_context, :production_context
   attr_reader :branch, :commit, :image_tag
+  attr_accessor :spec_dir
 
   def self.docker
     @docker_path ||= File.which('docker') || File.which('podman')
@@ -54,8 +55,7 @@ class Deployer
   end
 
   def specs_running(context = nil)
-    context ||= default_context
-    context = context.to_s
+    context = (context || default_context).to_s
     specs = deploy_specs(context)
 
     cmd = String.new "--output=json"
@@ -93,8 +93,7 @@ class Deployer
   end
 
   def deploy!(context)
-    context ||= default_context
-    context = context.to_s
+    context = (context || default_context).to_s
     specs = deploy_specs(context).presence  or raise "No kubernetes specs to deploy"
     stdout, stderr, _success = kubectl(context, 'apply -f -', YAML.dump_stream(*specs))
     puts stdout  if stdout.present?
@@ -122,11 +121,11 @@ class Deployer
   end
 
   def specs(context = nil)
-    context ||= default_context
-    context = context.to_s
-    @specs[context] ||= begin
-      paths = git.ls_tree(commit, "platform/#{context}/")['blob'].keys
-      raise "No specs found for context #{context}"  unless paths.present?
+    spec_dir = self.spec_dir.presence || (context || default_context).to_s
+    @specs[spec_dir] ||= begin
+      spec_dir = "platform/#{spec_dir}/"
+      paths = git.ls_tree(commit, spec_dir)['blob'].keys
+      raise "No specs found in #{spec_dir}"  unless paths.present?
       paths.map { |path| YAML.load_stream( git.show(commit, path) ) }.flatten.compact
     end
   end

@@ -28,10 +28,11 @@ module Record360
         super()
       end
 
-      def call(root: nil, branch: nil, context: nil, **)
+      def call(branch: nil, context: nil, root: nil, specs: nil, **)
         @root = root  if root
         @deployer ||= Deployer.new(@root)
         deployer.branch = branch  if branch
+        deployer.spec_dir = specs  if specs
         @context = context || deployer.default_context
       end
 
@@ -141,6 +142,7 @@ module Record360
     class CurrentStatus < Dry::CLI::Command
       desc "Display status of all running specs"
       argument :context, desc: "Kubernetes context"
+      option :specs, desc: "Kubernetes specification directory"
       include Common
 
       def call(**)
@@ -193,9 +195,10 @@ module Record360
       desc "Deploy the docker image to the cluster"
       argument :branch,  desc: "Branch (or commit) to build"
       argument :context, desc: "Kubernetes context"
+      option :specs, desc: "Kubernetes specification directory"
       include Common
 
-      def call(**)
+      def call(specs: nil, **)
         super
         if context == production_context
           if branch.blank?
