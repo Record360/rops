@@ -9,6 +9,7 @@ require 'hashdiff'
 
 require 'core_ext'
 require 'deployer'
+require 'version'
 
 module Record360
   module Operations
@@ -235,10 +236,18 @@ module Record360
       end
     end
 
+    class Version < Dry::CLI::Command
+      desc "output version information and exit"
+      def call
+        puts VERSION
+      end
+    end
+
     register 'status', CurrentStatus
     register 'build',  BuildImage
     register 'push',   PushImage
     register 'deploy', DeployImage
+    register 'version', Version
   end
 end
 

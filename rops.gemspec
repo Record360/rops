@@ -1,6 +1,8 @@
+require_relative 'lib/version'
+
 Gem::Specification.new do |s|
   s.name        = 'rops'
-  s.version     = '1.0.8'
+  s.version     = Record360::Operations::VERSION
   s.summary     = "Record360 Operations tool"
   s.description = "A tool to checkout, build, and deploy projects using Git, Docker, and Kubernetes"
   s.authors     = ["Steve Sloan"]
