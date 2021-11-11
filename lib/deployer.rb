@@ -43,11 +43,7 @@ class Deployer
     @branch.delete_prefix!('g')  if @branch.match(/^g\h{8}$/)
     @commit = git.object(@branch).sha
 
-    short_id = @commit[0, 8]
-    @image_tag = "g#{short_id}"
-    if (@branch != default_branch) && !@branch.start_with?(short_id)
-      @image_tag += "-#{@branch}"
-    end
+    @image_tag = @commit[0, 8]
     images.each do |image|
       image.commit = commit
       image.tag = image_tag
