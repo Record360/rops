@@ -14,7 +14,7 @@ Gem::Specification.new do |s|
 
   s.add_runtime_dependency 'dry-cli', '~> 0.7.0'
   s.add_runtime_dependency 'activesupport', '~> 6.1.4'
-  s.add_runtime_dependency 'git', '~> 1.9.1'
+  s.add_runtime_dependency 'git', '>= 1.9.1', '< 1.12.0'
   s.add_runtime_dependency 'ptools', '~> 1.4.2'
   s.add_runtime_dependency 'hashdiff', '~> 1.0.1'
   s.add_runtime_dependency 'net-ssh', '~> 6.1.0'
