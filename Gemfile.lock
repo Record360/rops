@@ -1,10 +1,10 @@
 PATH
   remote: .
   specs:
-    rops (1.1.0)
-      activesupport (~> 6.1.4)
+    rops (1.2.0)
+      activesupport (~> 7.0.3)
       dry-cli (~> 0.7.0)
-      git (>= 1.9.1, < 1.12.0)
+      git (~> 1.9.1)
       hashdiff (~> 1.0.1)
       net-ssh (~> 6.1.0)
       ptools (~> 1.4.2)
@@ -12,26 +12,24 @@ PATH
 GEM
   remote: https://rubygems.org/
   specs:
-    activesupport (6.1.4.1)
+    activesupport (7.0.3.1)
       concurrent-ruby (~> 1.0, >= 1.0.2)
       i18n (>= 1.6, < 2)
       minitest (>= 5.1)
       tzinfo (~> 2.0)
-      zeitwerk (~> 2.3)
-    concurrent-ruby (1.1.9)
+    concurrent-ruby (1.1.10)
     dry-cli (0.7.0)
-    git (1.11.0)
+    git (1.9.1)
       rchardet (~> 1.8)
     hashdiff (1.0.1)
-    i18n (1.8.10)
+    i18n (1.12.0)
       concurrent-ruby (~> 1.0)
-    minitest (5.14.4)
+    minitest (5.16.2)
     net-ssh (6.1.0)
     ptools (1.4.2)
     rchardet (1.8.0)
-    tzinfo (2.0.4)
+    tzinfo (2.0.5)
       concurrent-ruby (~> 1.0)
-    zeitwerk (2.4.2)
 
 PLATFORMS
   x86_64-linux
@@ -40,4 +38,4 @@ DEPENDENCIES
   rops!
 
 BUNDLED WITH
-   2.2.25
+   2.3.19
