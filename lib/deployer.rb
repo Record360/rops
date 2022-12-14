@@ -1,24 +1,20 @@
 require 'yaml'
 require 'open3'
 require 'ptools'
+require 'net/http'
+require 'uri'
+
 require 'git_ext'
+require 'config'
 require 'image'
 
 class Deployer
-  CONFIG_LOCATIONS = %w(.rops.yaml platform/rops.yaml config/rops.yaml).freeze
-  CONFIG_DEFAULTS = {
-    'repository' => nil,
-    'default_branch' => 'master',
-    'registry' => 'docker.io/r360',
-    'default_context' => 'staging',
-    'production_context' => 'production',
-    'images' => []
-  }.freeze
-
-  attr_reader :root, :repository, :registry, :ssh_host, :images
-  attr_reader :default_branch, :default_context, :production_context
+  attr_reader :root, :config
   attr_reader :branch, :commit, :image_tag
   attr_accessor :spec_dir
+
+  delegate :repository, :registry, :ssh_host, :images, to: :config
+  delegate :default_branch, :default_context, :production_context, to: :config
 
   def self.docker
     @docker_path ||= File.which('docker') || File.which('podman')
@@ -29,9 +25,7 @@ class Deployer
   end
 
   def initialize(root = nil)
-    @images = []
     @specs = {}
-
     @root = root || Dir.pwd
     load_config
     self.branch = default_branch
@@ -94,6 +88,7 @@ class Deployer
     stdout, stderr, _success = kubectl(context, 'apply -f -', YAML.dump_stream(*specs))
     puts stdout  if stdout.present?
     puts stderr  if stderr.present?
+    notify!(context)
   end
 
   def deploy_specs(context = nil)
@@ -161,24 +156,27 @@ private
   end
 
   def load_config
-    conf_path = find_config(root)
-    conf = conf_path ? YAML.load_file(conf_path) : {}
-    conf = conf.reverse_merge(CONFIG_DEFAULTS)
-
-    @repository, @registry, @default_branch, @default_context, @production_context, @ssh_host, images =
-      conf.values_at('repository', 'registry', 'default_branch', 'default_context', 'production_context', 'ssh', 'images').map(&:presence)
-    @repository ||= root
-
-    images ||= [{ 'name' => File.basename(File.absolute_path(repository)) }]
-    @images = images.map do |image|
-      name = image['name']
-      dockerfile = image['dockerfile'].presence || 'Dockerfile'
-      Image.new(name: name, repository: repository, dockerfile: dockerfile, registry: registry, commit: nil, tag: nil)
-    end
+    @config ||= ::Config.new.load(root)
   end
 
-  def find_config(dir_or_path)
-    return dir_or_path  unless File.directory?(dir_or_path)
-    CONFIG_LOCATIONS.map { |location|  File.join(dir_or_path, location) }.detect { |path|  File.exist?(path) }
+  def notify!(context)
+    if (notify = config.contexts[context]&.dig(:notify))
+      text = notify[:text].render(
+        'repository' => repository,
+        'registry' => registry,
+        'ssh_host' => ssh_host,
+        'branch' => branch,
+        'commit' => commit,
+        'image_tag' => image_tag,
+      )
+      url = notify[:url]
+      msg = notify.without(:url).symbolize_keys.merge(text: text).compact
+
+      http = Net::HTTP.new(url.host, url.port)
+      http.use_ssl = url.instance_of?(URI::HTTPS)
+      request = Net::HTTP::Post.new(url.request_uri, content_type: 'application/json')
+      request.body = msg.to_json
+      response = http.request(request)
+    end
   end
 end
