@@ -34,7 +34,7 @@ class Config
       Image.new(name: name, repository: repository, dockerfile: dockerfile, registry: registry, commit: nil, tag: nil)
     end
 
-    @contexts = HashWithIndifferentAccess.new(contexts)
+    @contexts = HashWithIndifferentAccess.new(contexts.compact)
     @contexts.each_value do |context|
       notify = context[:notify]
       next  unless notify
