@@ -11,8 +11,6 @@ class Config
     'registry' => 'docker.io/r360',
     'default_context' => 'staging',
     'production_context' => 'production',
-    'images' => [],
-    'contexts' => {},
   }.freeze
 
   attr_reader :repository, :registry, :default_branch, :default_context, :production_context, :ssh_host
@@ -34,6 +32,7 @@ class Config
       Image.new(name: name, repository: repository, dockerfile: dockerfile, registry: registry, commit: nil, tag: nil)
     end
 
+    contexts ||= {}
     @contexts = HashWithIndifferentAccess.new(contexts.compact)
     @contexts.each_value do |context|
       notify = context[:notify]
