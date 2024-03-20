@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    rops (1.4.3)
+    rops (1.4.4)
       activesupport (~> 7.0.3)
       dry-cli (~> 0.7.0)
       git (>= 1.9.1, < 1.14.0)
@@ -32,7 +32,7 @@ GEM
     i18n (1.14.1)
       concurrent-ruby (~> 1.0)
     liquid (5.4.0)
-    minitest (5.19.0)
+    minitest (5.20.0)
     net-ssh (7.0.1)
     ptools (1.4.3)
     public_suffix (5.0.3)

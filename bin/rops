@@ -31,8 +31,7 @@ module Record360
 
       def call(branch: nil, context: nil, root: nil, specs: nil, **)
         @root = root  if root
-        @deployer ||= Deployer.new(@root)
-        deployer.branch = branch  if branch
+        @deployer ||= Deployer.new(@root, branch: branch)
         deployer.spec_dir = specs  if specs
         @context = context || deployer.default_context
       end

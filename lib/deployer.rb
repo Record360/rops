@@ -24,11 +24,11 @@ class Deployer
     docker.include?('podman')
   end
 
-  def initialize(root = nil)
+  def initialize(root = nil, branch: nil)
     @specs = {}
     @root = root || Dir.pwd
     load_config
-    self.branch = default_branch
+    self.branch = branch.presence || default_branch
   end
 
   def branch=(branch)

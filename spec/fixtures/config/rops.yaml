@@ -1,5 +1,5 @@
 repository: '.'
-default_branch: 'master'
+default_branch: 'main'
 registry: 'the registry'
 default_context: 'default context'
 production_context: 'production context'

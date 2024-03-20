@@ -6,7 +6,7 @@ describe Config do
     config = Config.new.load(__dir__ + '/../fixtures')
     expect(config.repository).to eq '.'
     expect(config.registry).to eq 'the registry'
-    expect(config.default_branch).to eq 'master'
+    expect(config.default_branch).to eq 'main'
     expect(config.default_context).to eq 'default context'
     expect(config.production_context).to eq 'production context'
     expect(config.ssh_host).to eq 'ssh.host'
